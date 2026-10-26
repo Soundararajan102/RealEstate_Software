@@ -43,9 +43,9 @@ services:
       SMS_PROVIDER: ${SMS_PROVIDER:-SIMULATED}
       SMS_API_KEY: ${SMS_API_KEY:-}
       RUN_SEED: ${RUN_SEED:-true}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
     ports:
-      - "4000:4000"
+      - "${BACKEND_PORT:-4000}:4000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -76,7 +76,7 @@ services:
       PORT: 3000
       HOSTNAME: "0.0.0.0"
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3001}:3000"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000', (res) => process.exit([200, 307, 308].includes(res.statusCode) ? 0 : 1))\""]
       interval: 15s
