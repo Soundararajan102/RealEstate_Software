@@ -32,7 +32,8 @@ async function bootstrap() {
   ];
 
   if (process.env.FRONTEND_URL) {
-    allowedOrigins.push(process.env.FRONTEND_URL);
+    const urls = process.env.FRONTEND_URL.split(',').map((u) => u.trim());
+    allowedOrigins.push(...urls);
   }
 
   app.enableCors({

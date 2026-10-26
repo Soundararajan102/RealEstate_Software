@@ -1,4 +1,7 @@
 services:
+  # ========================================================
+  # 1. PostgreSQL Database Service
+  # ========================================================
   db:
     image: postgres:16-alpine
     container_name: msp_real_estate_db
@@ -16,7 +19,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    networks:
+      - msp_network
 
+  # ========================================================
+  # 2. Backend REST API Service (NestJS + Prisma)
+  # ========================================================
   backend:
     build:
       context: ./backend
@@ -27,17 +36,30 @@ services:
       db:
         condition: service_healthy
     environment:
+      NODE_ENV: production
       DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-root}@db:5432/${POSTGRES_DB:-msp_real_estate}?schema=public"
       PORT: 4000
       JWT_SECRET: ${JWT_SECRET:-msp_super_secret_jwt_key_2026_durozen_real_estate}
       SMS_PROVIDER: ${SMS_PROVIDER:-SIMULATED}
+      SMS_API_KEY: ${SMS_API_KEY:-}
       RUN_SEED: ${RUN_SEED:-true}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     ports:
       - "4000:4000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:4000/api', (res) => process.exit(res.statusCode === 200 ? 0 : 1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - msp_network
 
+  # ========================================================
+  # 3. Frontend Web Portal Service (Next.js 16 Standalone)
+  # ========================================================
   frontend:
     build:
       context: ./frontend
@@ -47,12 +69,30 @@ services:
     container_name: msp_real_estate_frontend
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     environment:
+      NODE_ENV: production
       PORT: 3000
       HOSTNAME: "0.0.0.0"
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000', (res) => process.exit([200, 307, 308].includes(res.statusCode) ? 0 : 1))\""]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - msp_network
 
+# ========================================================
+# Persistent Volumes & Network Definitions
+# ========================================================
 volumes:
   postgres_data:
+    driver: local
+
+networks:
+  msp_network:
+    driver: bridge
