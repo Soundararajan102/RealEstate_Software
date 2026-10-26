@@ -1,0 +1,12 @@
+{
+  "name": "msp-real-estate-software",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MSP Properties — Real Estate Management & Operations Suite",
+  "scripts": {
+    "seed": "npm run --prefix backend seed",
+    "seed:cli": "npm run --prefix backend seed:cli",
+    "seed:logins": "npm run --prefix backend seed:logins",
+    "seed:show": "npm run --prefix backend seed:show"
+  }
+}

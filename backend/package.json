@@ -18,7 +18,11 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
-    "test:e2e": "vitest run --config ./vitest.config.e2e.ts"
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "seed": "tsx src/cli/seed-cli.ts --all",
+    "seed:cli": "tsx src/cli/seed-cli.ts",
+    "seed:logins": "tsx src/cli/seed-cli.ts --logins",
+    "seed:show": "tsx src/cli/seed-cli.ts --show"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",
