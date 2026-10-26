@@ -22,7 +22,9 @@
     "seed": "tsx src/cli/seed-cli.ts --all",
     "seed:cli": "tsx src/cli/seed-cli.ts",
     "seed:logins": "tsx src/cli/seed-cli.ts --logins",
-    "seed:show": "tsx src/cli/seed-cli.ts --show"
+    "seed:show": "tsx src/cli/seed-cli.ts --show",
+    "seed:blank": "tsx src/cli/seed-cli.ts --blank",
+    "seed:clean": "tsx src/cli/seed-cli.ts --clean"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

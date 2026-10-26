@@ -183,6 +183,38 @@ export async function cleanDatabase() {
   console.log('✅ Database cleaned successfully.');
 }
 
+// Clean all sample catalog & transactional data, keeping only Admin login
+export async function cleanDataKeepAdmin() {
+  console.log('🧹 Purging all sample data (plots, bookings, customers, brokers, payments, SMS)...');
+  await prisma.smsLog.deleteMany();
+  await prisma.payment.deleteMany();
+  await prisma.installmentSchedule.deleteMany();
+  await prisma.booking.deleteMany();
+  await prisma.plot.deleteMany();
+  await prisma.project.deleteMany();
+  await prisma.customer.deleteMany();
+  await prisma.broker.deleteMany();
+
+  // Upsert the main Admin user so the live site remains accessible
+  const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
+  await prisma.user.upsert({
+    where: { email: 'admin@mspproperties.com' },
+    update: { passwordHash, isActive: true, role: Role.ADMIN },
+    create: {
+      employeeId: 'EMP-1001',
+      fullName: 'M. S. Parthiban',
+      email: 'admin@mspproperties.com',
+      phone: '9842012345',
+      passwordHash,
+      role: Role.ADMIN,
+      isActive: true,
+      assignedProjects: [],
+    },
+  });
+  console.log('✅ All sample plots, projects, customers & bookings deleted!');
+  console.log('🔑 Preserved Admin Login: admin@mspproperties.com / Password@123\n');
+}
+
 // Seed Users only (safe upsert without deleting projects or bookings)
 export async function seedLoginsOnly() {
   console.log(`\n🌱 Seeding / Upserting all ${ALL_SEED_USERS.length} user logins...`);
@@ -673,13 +705,16 @@ Usage:
 
 Options:
   --all, -a        Perform full clean and reseed (Users, Projects, Plots, Bookings, etc.)
+  --blank, -b      Delete all sample data (plots, bookings, customers) but PRESERVE Admin login
   --logins, -l     Seed / Upsert ALL user logins only (Non-destructive, keeps existing data)
   --show, -s       Display the login credentials table and exit without modifying database
-  --clean, -c      Wipe/Purge all database tables
+  --clean, -c      Wipe/Purge 100% of all database tables (including users)
   --help, -h       Display this help documentation
 
 Examples:
   npm run seed                   # Runs full seed
+  npm run seed -- --blank        # Wipes all sample data, leaves only Admin
+  npm run seed -- --clean        # Wipes everything completely
   npm run seed -- --logins       # Only updates/creates login accounts
   npm run seed -- --show         # Shows all credentials
   npm run seed:cli               # Interactive prompt menu
@@ -692,13 +727,14 @@ async function runInteractiveMenu() {
 
   console.log('\nSelect an operation:');
   console.log('  1. Full Seed (Clean database and seed all master & transactional data)');
-  console.log('  2. Seed / Upsert All User Logins Only (Safe, non-destructive)');
-  console.log('  3. Show All User Login Credentials Table');
-  console.log('  4. Clean / Wipe All Tables');
-  console.log('  5. Exit\n');
+  console.log('  2. Delete All Sample Data (Wipe plots, bookings, customers, etc. — Keep Admin)');
+  console.log('  3. Seed / Upsert All User Logins Only (Safe, non-destructive)');
+  console.log('  4. Show All User Login Credentials Table');
+  console.log('  5. Clean / Wipe 100% of All Tables (Including users)');
+  console.log('  6. Exit\n');
 
   try {
-    const choice = await rl.question('Enter your choice (1-5): ');
+    const choice = await rl.question('Enter your choice (1-6): ');
     rl.close();
 
     switch (choice.trim()) {
@@ -706,15 +742,18 @@ async function runInteractiveMenu() {
         await seedFullDatabase();
         break;
       case '2':
-        await seedLoginsOnly();
+        await cleanDataKeepAdmin();
         break;
       case '3':
-        displayLoginsTable();
+        await seedLoginsOnly();
         break;
       case '4':
-        await cleanDatabase();
+        displayLoginsTable();
         break;
       case '5':
+        await cleanDatabase();
+        break;
+      case '6':
         console.log('👋 Goodbye!');
         break;
       default:
@@ -739,6 +778,12 @@ async function main() {
   if (args.includes('--show') || args.includes('-s')) {
     printBanner();
     displayLoginsTable();
+    return;
+  }
+
+  if (args.includes('--blank') || args.includes('-b') || args.includes('--fresh')) {
+    printBanner();
+    await cleanDataKeepAdmin();
     return;
   }
 

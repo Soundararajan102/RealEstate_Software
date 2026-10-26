@@ -7,6 +7,8 @@
     "seed": "npm run --prefix backend seed",
     "seed:cli": "npm run --prefix backend seed:cli",
     "seed:logins": "npm run --prefix backend seed:logins",
-    "seed:show": "npm run --prefix backend seed:show"
+    "seed:show": "npm run --prefix backend seed:show",
+    "seed:blank": "npm run --prefix backend seed:blank",
+    "seed:clean": "npm run --prefix backend seed:clean"
   }
 }
