@@ -10,8 +10,6 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-root}
       POSTGRES_DB: ${POSTGRES_DB:-msp_real_estate}
-    ports:
-      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -43,9 +41,7 @@ services:
       SMS_PROVIDER: ${SMS_PROVIDER:-SIMULATED}
       SMS_API_KEY: ${SMS_API_KEY:-}
       RUN_SEED: ${RUN_SEED:-true}
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3001}
-    ports:
-      - "${BACKEND_PORT:-4000}:4000"
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -75,8 +71,6 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: "0.0.0.0"
-    ports:
-      - "${FRONTEND_PORT:-3001}:3000"
     healthcheck:
       test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000', (res) => process.exit([200, 307, 308].includes(res.statusCode) ? 0 : 1))\""]
       interval: 15s
