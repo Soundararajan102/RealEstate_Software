@@ -8,16 +8,17 @@ export class CustomersService {
 
   private async generateNextCustomerCode(): Promise<string> {
     const lastCustomer = await this.prisma.customer.findFirst({
+      where: { customerCode: { startsWith: 'CUST-' } },
       orderBy: { createdAt: 'desc' },
       select: { customerCode: true },
     });
 
-    if (!lastCustomer || !lastCustomer.customerCode.startsWith('CUST-')) {
-      return 'CUST-1006';
+    if (!lastCustomer) {
+      return 'CUST-1001';
     }
 
     const numPart = parseInt(lastCustomer.customerCode.replace('CUST-', ''), 10);
-    const nextNum = isNaN(numPart) ? 1006 : numPart + 1;
+    const nextNum = isNaN(numPart) ? 1001 : numPart + 1;
     return `CUST-${nextNum}`;
   }
 

@@ -1,7 +1,14 @@
 import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 import './globals.css';
-import Sidebar from '@/components/Sidebar';
-import Navbar from '@/components/Navbar';
+import AppShell from '@/components/AppShell';
+import { ToastProvider } from '@/lib/toast';
+
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+});
 
 export const metadata: Metadata = {
   title: 'MSP Properties | Real Estate Management System',
@@ -14,17 +21,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="bg-slate-50 text-slate-900 font-sans antialiased min-h-screen">
-        <div className="flex h-screen overflow-hidden">
-          <Sidebar />
-          <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-            <Navbar />
-            <main className="flex-1 p-6 sm:p-8 max-w-7xl w-full mx-auto">
-              {children}
-            </main>
-          </div>
-        </div>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <body suppressHydrationWarning className="bg-slate-50 text-slate-900 font-sans antialiased min-h-screen">
+        <ToastProvider>
+          <AppShell>{children}</AppShell>
+        </ToastProvider>
       </body>
     </html>
   );

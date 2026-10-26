@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsService } from '../sms/sms.service';
 import { CreateBookingDto } from './dto/booking.dto';
@@ -11,35 +11,39 @@ export class BookingsService {
     private smsService: SmsService,
   ) {}
 
+  private readonly logger = new Logger(BookingsService.name);
+
   private async generateNextBookingCode(): Promise<string> {
+    const year = new Date().getFullYear();
     const lastBooking = await this.prisma.booking.findFirst({
+      where: { bookingCode: { startsWith: `BK-${year}-` } },
       orderBy: { createdAt: 'desc' },
       select: { bookingCode: true },
     });
 
-    const year = new Date().getFullYear();
-    if (!lastBooking || !lastBooking.bookingCode.startsWith(`BK-${year}-`)) {
-      return `BK-${year}-0003`;
+    if (!lastBooking) {
+      return `BK-${year}-0001`;
     }
 
     const numPart = parseInt(lastBooking.bookingCode.replace(`BK-${year}-`, ''), 10);
-    const nextNum = isNaN(numPart) ? 3 : numPart + 1;
+    const nextNum = isNaN(numPart) ? 1 : numPart + 1;
     return `BK-${year}-${String(nextNum).padStart(4, '0')}`;
   }
 
   private async generateNextReceiptNumber(): Promise<string> {
+    const year = new Date().getFullYear();
     const lastPayment = await this.prisma.payment.findFirst({
+      where: { receiptNumber: { startsWith: `RCP-${year}-` } },
       orderBy: { createdAt: 'desc' },
       select: { receiptNumber: true },
     });
 
-    const year = new Date().getFullYear();
-    if (!lastPayment || !lastPayment.receiptNumber.startsWith(`RCP-${year}-`)) {
-      return `RCP-${year}-0004`;
+    if (!lastPayment) {
+      return `RCP-${year}-0001`;
     }
 
     const numPart = parseInt(lastPayment.receiptNumber.replace(`RCP-${year}-`, ''), 10);
-    const nextNum = isNaN(numPart) ? 4 : numPart + 1;
+    const nextNum = isNaN(numPart) ? 1 : numPart + 1;
     return `RCP-${year}-${String(nextNum).padStart(4, '0')}`;
   }
 
@@ -192,14 +196,20 @@ export class BookingsService {
 
     // 4. Execute atomic transaction
     const result = await this.prisma.$transaction(async (tx) => {
-      // Mark plot as BOOKED (or SOLD if full payment upfront)
       const isFullPaid = advancePaid >= finalPayableAmount;
       const newPlotStatus = isFullPaid ? PlotStatus.SOLD : PlotStatus.BOOKED;
 
-      await tx.plot.update({
-        where: { id: plot.id },
+      // Atomic reservation guard preventing race conditions
+      const updateResult = await tx.plot.updateMany({
+        where: { id: plot.id, status: PlotStatus.AVAILABLE },
         data: { status: newPlotStatus },
       });
+
+      if (updateResult.count === 0) {
+        throw new ConflictException(
+          `Plot ${plot.plotNumber} was concurrently booked by another session`,
+        );
+      }
 
       // Create Booking
       const booking = await tx.booking.create({
@@ -296,7 +306,7 @@ export class BookingsService {
         });
       }
     } catch (smsErr) {
-      console.error('Non-blocking SMS dispatch error:', smsErr);
+      this.logger.warn(`Non-blocking SMS dispatch error for booking ${bookingCode}: ${(smsErr as Error).message}`);
     }
 
     return this.findOne(result.booking.id);

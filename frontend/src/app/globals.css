@@ -1,25 +1,23 @@
 @import "tailwindcss";
 
 @layer base {
-  :root {
-    --bg-main: #f8fafc;
-    --card-bg: #ffffff;
-    --border-color: #e2e8f0;
-    --text-primary: #0f172a;
-    --text-muted: #64748b;
-    --brand-primary: #0f172a;
-    --brand-accent: #059669;
-    --brand-gold: #d97706;
+  body {
+    font-family: var(--font-inter), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: #f8fafc;
+    color: #0f172a;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11", "tnum";
+    letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
-  body {
-    background-color: var(--bg-main);
-    color: var(--text-primary);
-    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  ::selection {
+    background-color: #0f172a;
+    color: #ffffff;
   }
 }
 
-/* Custom scrollbar */
+/* Enterprise Sleek Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
@@ -39,19 +37,19 @@
 @media print {
   @page {
     size: auto;
-    margin: 12mm;
+    margin: 8mm;
   }
 
   body {
     background: #ffffff !important;
     color: #000000 !important;
+    overflow: visible !important;
   }
 
-  .no-print {
+  .no-print, header, aside, nav {
     display: none !important;
   }
 
-  /* Isolate receipt for zero unwanted headers/footers/overflow */
   body * {
     visibility: hidden;
   }
@@ -62,14 +60,15 @@
   }
 
   .receipt-container {
-    position: absolute !important;
+    position: fixed !important;
     left: 0 !important;
     top: 0 !important;
     width: 100% !important;
     max-width: 100% !important;
     margin: 0 !important;
-    padding: 10px 0 !important;
+    padding: 0 !important;
     box-shadow: none !important;
     border: none !important;
+    background: #ffffff !important;
   }
 }

@@ -1,14 +1,21 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Users, Search, PlusCircle, Phone, Mail, MapPin, Eye, X, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Users, PlusCircle, Eye, X, AlertCircle } from 'lucide-react';
 import { apiRequest, formatINR, formatDate } from '@/lib/api';
+import { useToast } from '@/lib/toast';
+import { useDebounce } from '@/lib/useDebounce';
 import { Customer } from '@/types';
+import { DataTable, ColumnDef } from '@/components/ui/DataTable';
+import { TruncatedCell } from '@/components/ui/Tooltip';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 
 export default function CustomersPage() {
+  const toast = useToast();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const debouncedSearch = useDebounce(search, 300);
 
   // Add Customer Modal
   const [isAddOpen, setIsAddOpen] = useState<boolean>(false);
@@ -26,24 +33,39 @@ export default function CustomersPage() {
   // View Customer Drawer
   const [selectedCustomer, setSelectedCustomer] = useState<any | null>(null);
 
-  const loadCustomers = async () => {
+  const loadCustomers = async (query = debouncedSearch) => {
     try {
       setLoading(true);
-      const res = await apiRequest<Customer[]>(`/customers?search=${encodeURIComponent(search)}`);
+      const res = await apiRequest<Customer[]>(`/customers?search=${encodeURIComponent(query)}`);
       setCustomers(res);
-    } catch (err: any) {
-      console.error(err);
+    } catch (err: unknown) {
+      console.error('Failed to load customers:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      loadCustomers();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [search]);
+    loadCustomers(debouncedSearch);
+  }, [debouncedSearch]);
+
+  // Esc key closes modal or drawer
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsAddOpen(false);
+        setSelectedCustomer(null);
+      }
+    };
+    if (isAddOpen || selectedCustomer) {
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isAddOpen, selectedCustomer]);
 
   const handleCreateCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,9 +93,11 @@ export default function CustomersPage() {
       setAddress('');
       setIdProofNumber('');
       setNotes('');
-      loadCustomers();
-    } catch (err: any) {
-      setError(err.message);
+      toast.success('Customer record added successfully!');
+      loadCustomers(debouncedSearch);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save customer';
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
@@ -83,360 +107,434 @@ export default function CustomersPage() {
     try {
       const details = await apiRequest(`/customers/${id}`);
       setSelectedCustomer(details);
-    } catch (err: any) {
-      alert(`Could not load customer details: ${err.message}`);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      toast.error(`Could not load customer details: ${msg}`);
     }
   };
 
+  const columns = useMemo<ColumnDef<Customer>[]>(
+    () => [
+      {
+        key: 'customerCode',
+        header: 'Customer ID',
+        sortable: true,
+        width: '120px',
+        render: (c) => (
+          <span className="font-mono font-bold text-slate-800 tracking-tight">
+            {c.customerCode}
+          </span>
+        ),
+      },
+      {
+        key: 'fullName',
+        header: 'Customer Name',
+        sortable: true,
+        render: (c) => (
+          <div>
+            <p className="font-semibold text-slate-900 leading-tight">{c.fullName}</p>
+            {c.address && (
+              <TruncatedCell
+                content={c.address}
+                maxWidth="max-w-[180px]"
+                className="text-slate-500 font-normal"
+              />
+            )}
+          </div>
+        ),
+      },
+      {
+        key: 'phone',
+        header: 'Phone / Email',
+        sortable: true,
+        render: (c) => (
+          <div>
+            <p className="font-mono font-medium text-slate-800 leading-tight">{c.phone}</p>
+            {c.email && (
+              <TruncatedCell
+                content={c.email}
+                maxWidth="max-w-[140px]"
+                className="text-slate-500 text-[11px]"
+              />
+            )}
+          </div>
+        ),
+      },
+      {
+        key: 'totalBookings',
+        header: 'Bookings',
+        sortable: true,
+        align: 'center',
+        render: (c) => (
+          <span className="px-2 py-0.5 rounded text-xs font-bold bg-slate-100 text-slate-800 font-mono">
+            {c.totalBookings || 0}
+          </span>
+        ),
+      },
+      {
+        key: 'totalCommitted',
+        header: 'Committed Value',
+        sortable: true,
+        align: 'right',
+        render: (c) => (
+          <span className="font-mono font-semibold text-slate-900 tracking-tight">
+            {formatINR(c.totalCommitted)}
+          </span>
+        ),
+      },
+      {
+        key: 'totalPaid',
+        header: 'Total Realized',
+        sortable: true,
+        align: 'right',
+        render: (c) => (
+          <span className="font-mono font-bold text-emerald-700 tracking-tight">
+            {formatINR(c.totalPaid)}
+          </span>
+        ),
+      },
+      {
+        key: 'pendingBalance',
+        header: 'Outstanding Balance',
+        sortable: true,
+        align: 'right',
+        render: (c) => {
+          const balance = c.pendingBalance || 0;
+          return balance > 0 ? (
+            <span className="font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+              {formatINR(balance)}
+            </span>
+          ) : (
+            <span className="font-mono text-xs text-slate-400 font-medium">₹0 (Clear)</span>
+          );
+        },
+      },
+      {
+        key: 'actions',
+        header: 'Profile',
+        align: 'center',
+        render: (c) => (
+          <button
+            type="button"
+            onClick={() => handleViewCustomer(c.id)}
+            className="p-1 hover:bg-slate-200 text-slate-600 rounded transition-colors cursor-pointer"
+            title="View Full Profile & Bookings"
+            aria-label={`View profile for ${c.fullName}`}
+          >
+            <Eye className="w-4 h-4 text-slate-700" />
+          </button>
+        ),
+      },
+    ],
+    [],
+  );
+
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center space-x-2">
-            <Users className="w-6 h-6 text-emerald-600" />
-            <span>Customer Directory & Ledgers</span>
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Maintain centralized contact profiles, booking history, and collection balances.
-          </p>
+    <ErrorBoundary componentName="CustomerDirectory">
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
+          <div>
+            <h1 className="text-lg font-bold text-slate-900 tracking-tight flex items-center space-x-2">
+              <Users className="w-5 h-5 text-emerald-700" />
+              <span>Customer Directory & Financial Ledgers</span>
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Maintain centralized contact profiles, booking history, verified KYC, and collection balances.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsAddOpen(true)}
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold rounded-md shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
+          >
+            <PlusCircle className="w-3.5 h-3.5" />
+            <span>Add New Customer</span>
+          </button>
         </div>
 
-        <button
-          onClick={() => setIsAddOpen(true)}
-          className="inline-flex items-center space-x-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-900/20 cursor-pointer self-start sm:self-auto"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>Add New Customer</span>
-        </button>
-      </div>
+        {/* Enterprise Data Grid */}
+        <DataTable<Customer>
+          data={customers}
+          columns={columns}
+          keyExtractor={(item) => item.id}
+          loading={loading}
+          searchPlaceholder="Search by customer name, phone, code (e.g. CUST-1001)..."
+          externalSearchValue={search}
+          onSearchChange={setSearch}
+          emptyTitle="No customers found"
+          emptyDescription="No customer records exist matching your search criteria."
+          ariaLabel="Customer directory ledger"
+        />
 
-      {/* Search Toolbar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-        <div className="relative w-full max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-          <input
-            type="text"
-            placeholder="Search by customer name, phone, code (e.g. CUST-1001)..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
-          />
-        </div>
-        <span className="text-xs text-slate-500 font-medium hidden sm:inline">
-          Total Customers: {customers.length}
-        </span>
-      </div>
-
-      {/* Customers Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-[10px] tracking-wider">
-              <tr>
-                <th className="py-3 px-4">Code</th>
-                <th className="py-3 px-4">Customer Name</th>
-                <th className="py-3 px-4">Phone / Email</th>
-                <th className="py-3 px-4 text-center">Bookings</th>
-                <th className="py-3 px-4 text-right">Committed</th>
-                <th className="py-3 px-4 text-right">Total Paid</th>
-                <th className="py-3 px-4 text-right">Pending Balance</th>
-                <th className="py-3 px-4 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {customers.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-400">
-                    No customers found matching your criteria.
-                  </td>
-                </tr>
-              ) : (
-                customers.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4 font-mono font-bold text-slate-700">
-                      {c.customerCode}
-                    </td>
-                    <td className="py-3.5 px-4 font-bold text-slate-900">
-                      {c.fullName}
-                      {c.address && (
-                        <p className="text-[11px] font-normal text-slate-500 truncate max-w-xs">
-                          {c.address}
-                        </p>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4">
-                      <p className="font-semibold text-slate-800">{c.phone}</p>
-                      {c.email && <p className="text-[11px] text-slate-400">{c.email}</p>}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700">
-                        {c.totalBookings || 0}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-mono font-medium text-slate-700">
-                      {formatINR(c.totalCommitted)}
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-mono font-semibold text-emerald-700">
-                      {formatINR(c.totalPaid)}
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-mono font-bold">
-                      {(c.pendingBalance || 0) > 0 ? (
-                        <span className="text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                          {formatINR(c.pendingBalance)}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400">₹0 (Clear)</span>
-                      )}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <button
-                        onClick={() => handleViewCustomer(c.id)}
-                        className="p-1.5 hover:bg-slate-200 text-slate-600 rounded-lg transition-colors cursor-pointer"
-                        title="View Full Profile & Bookings"
-                      >
-                        <Eye className="w-4 h-4 text-slate-600" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Add Customer Modal */}
-      {isAddOpen && (
-        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-6 bg-slate-900/75 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto sm:my-8 relative">
-            <div className="sticky top-0 z-20 bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-800 shadow-sm">
-              <h2 className="font-bold text-sm">Add New Customer Record</h2>
-              <button onClick={() => setIsAddOpen(false)} className="p-1.5 text-slate-400 hover:text-white rounded-md">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateCustomer} className="p-6 space-y-3.5 text-xs">
-              {error && (
-                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 flex items-center space-x-2">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Customer Full Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. S. Murugesan"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Primary Phone *</label>
-                  <input
-                    type="tel"
-                    required
-                    placeholder="9842100000"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-                  />
-                </div>
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">Alternate Phone</label>
-                  <input
-                    type="tel"
-                    placeholder="Optional"
-                    value={alternatePhone}
-                    onChange={(e) => setAlternatePhone(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Email Address</label>
-                <input
-                  type="email"
-                  placeholder="name@gmail.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Address</label>
-                <input
-                  type="text"
-                  placeholder="Door No, Street, City, Pincode"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">ID Proof Type</label>
-                  <select
-                    value={idProofType}
-                    onChange={(e) => setIdProofType(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-                  >
-                    <option value="Aadhaar">Aadhaar Card</option>
-                    <option value="PAN">PAN Card</option>
-                    <option value="Voter ID">Voter ID</option>
-                    <option value="Driving License">Driving License</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="font-semibold text-slate-700 block mb-1">ID Proof Number</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 1234-5678-9012"
-                    value={idProofNumber}
-                    onChange={(e) => setIdProofNumber(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Notes / Preferences</label>
-                <textarea
-                  rows={2}
-                  placeholder="Plot interest, budget, etc."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-200">
+        {/* Add Customer Modal */}
+        {isAddOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-6 bg-slate-900/75 backdrop-blur-xs overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-cust-title"
+          >
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 my-auto relative">
+              <div className="sticky top-0 z-20 bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between border-b border-slate-800 shadow-xs">
+                <h2 id="add-cust-title" className="font-bold text-xs uppercase tracking-wider text-slate-200">
+                  Add New Customer Record
+                </h2>
                 <button
                   type="button"
                   onClick={() => setIsAddOpen(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-semibold"
+                  aria-label="Close dialog"
+                  className="p-1 text-slate-400 hover:text-white rounded cursor-pointer"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-md shadow-emerald-900/20 cursor-pointer disabled:opacity-50"
-                >
-                  {submitting ? 'Saving...' : 'Save Customer'}
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
 
-      {/* Customer Details Drawer / Modal */}
-      {selectedCustomer && (
-        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-6 bg-slate-900/75 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto sm:my-8 relative">
-            <div className="sticky top-0 z-20 bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-800 shadow-sm">
-              <div>
-                <h2 className="font-bold text-base">{selectedCustomer.fullName}</h2>
-                <p className="text-[11px] text-emerald-400 font-mono">
-                  ID: {selectedCustomer.customerCode} • Phone: {selectedCustomer.phone}
-                </p>
-              </div>
-              <button
-                onClick={() => setSelectedCustomer(null)}
-                className="p-1.5 text-slate-400 hover:text-white rounded-md"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+              <form onSubmit={handleCreateCustomer} className="p-5 space-y-3 text-xs">
+                {error && (
+                  <div className="p-2.5 rounded bg-rose-50 border border-rose-200 text-rose-700 flex items-center space-x-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{error}</span>
+                  </div>
+                )}
 
-            <div className="p-6 space-y-5 text-xs max-h-[75vh] overflow-y-auto">
-              {/* Profile Box */}
-              <div className="bg-slate-50 border border-slate-200 p-4 rounded-xl grid grid-cols-2 gap-3">
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">Address</span>
-                  <p className="text-slate-800 font-medium">{selectedCustomer.address || 'Not specified'}</p>
+                  <label htmlFor="cust-name" className="font-semibold text-slate-700 block mb-1">
+                    Customer Full Name *
+                  </label>
+                  <input
+                    id="cust-name"
+                    type="text"
+                    required
+                    placeholder="e.g. S. Murugesan"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-md border border-slate-300 font-medium focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
+                  />
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="cust-phone" className="font-semibold text-slate-700 block mb-1">
+                      Primary Phone *
+                    </label>
+                    <input
+                      id="cust-phone"
+                      type="tel"
+                      required
+                      placeholder="9842100000"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-md border border-slate-300 font-medium focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="cust-alt-phone" className="font-semibold text-slate-700 block mb-1">
+                      Alternate Phone
+                    </label>
+                    <input
+                      id="cust-alt-phone"
+                      type="tel"
+                      placeholder="Optional"
+                      value={alternatePhone}
+                      onChange={(e) => setAlternatePhone(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-md border border-slate-300 font-medium focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+
                 <div>
-                  <span className="text-[10px] uppercase font-bold text-slate-400">ID Proof</span>
-                  <p className="text-slate-800 font-medium">
-                    {selectedCustomer.idProofType}: {selectedCustomer.idProofNumber || '-'}
+                  <label htmlFor="cust-email" className="font-semibold text-slate-700 block mb-1">Email Address</label>
+                  <input
+                    id="cust-email"
+                    type="email"
+                    placeholder="name@gmail.com"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-md border border-slate-300 font-medium focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="cust-address" className="font-semibold text-slate-700 block mb-1">Postal Address</label>
+                  <input
+                    id="cust-address"
+                    type="text"
+                    placeholder="Door No, Street, City, Pincode"
+                    value={address}
+                    onChange={(e) => setAddress(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-md border border-slate-300 font-medium focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label htmlFor="cust-id-type" className="font-semibold text-slate-700 block mb-1">ID Proof Type</label>
+                    <select
+                      id="cust-id-type"
+                      value={idProofType}
+                      onChange={(e) => setIdProofType(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-md border border-slate-300 bg-white font-medium focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
+                    >
+                      <option value="Aadhaar">Aadhaar Card</option>
+                      <option value="PAN">PAN Card</option>
+                      <option value="Voter ID">Voter ID</option>
+                      <option value="Driving License">Driving License</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label htmlFor="cust-id-num" className="font-semibold text-slate-700 block mb-1">ID Proof Number</label>
+                    <input
+                      id="cust-id-num"
+                      type="text"
+                      placeholder="e.g. 1234-5678-9012"
+                      value={idProofNumber}
+                      onChange={(e) => setIdProofNumber(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-md border border-slate-300 font-medium focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label htmlFor="cust-notes" className="font-semibold text-slate-700 block mb-1">Notes / Preferences</label>
+                  <textarea
+                    id="cust-notes"
+                    rows={2}
+                    placeholder="Plot interest, budget, etc."
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-md border border-slate-300 font-medium focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddOpen(false)}
+                    className="px-3 py-1.5 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 font-semibold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-md font-semibold text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {submitting ? 'Saving...' : 'Save Customer'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Customer Details Drawer / Modal */}
+        {selectedCustomer && (
+          <div
+            className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-6 bg-slate-900/75 backdrop-blur-xs overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="view-cust-title"
+          >
+            <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 my-auto relative">
+              <div className="sticky top-0 z-20 bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between border-b border-slate-800 shadow-xs">
+                <div>
+                  <h2 id="view-cust-title" className="font-bold text-sm text-slate-100">{selectedCustomer.fullName}</h2>
+                  <p className="text-[11px] text-slate-400 font-mono">
+                    ID: {selectedCustomer.customerCode} • Phone: {selectedCustomer.phone}
                   </p>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedCustomer(null)}
+                  aria-label="Close dialog"
+                  className="p-1 text-slate-400 hover:text-white rounded cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
 
-              {/* Booking Contracts */}
-              <div>
-                <h3 className="font-bold text-sm text-slate-900 mb-2">Plot Bookings & Contracts</h3>
-                {(!selectedCustomer.bookings || selectedCustomer.bookings.length === 0) ? (
-                  <p className="text-slate-400 italic">No bookings recorded yet.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {selectedCustomer.bookings.map((bk: any) => (
-                      <div key={bk.id} className="p-3.5 border border-slate-200 rounded-xl bg-white space-y-2">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-slate-900">
-                            Plot {bk.plot?.plotNumber} in {bk.plot?.project?.name}
-                          </span>
-                          <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                            {bk.status}
-                          </span>
-                        </div>
-                        <div className="grid grid-cols-3 gap-2 text-[11px] text-slate-600">
-                          <div>
-                            <span>Payable: </span>
-                            <span className="font-semibold">{formatINR(bk.finalPayableAmount)}</span>
-                          </div>
-                          <div>
-                            <span>Advance Paid: </span>
-                            <span className="font-semibold text-emerald-700">{formatINR(bk.bookingAdvancePaid)}</span>
-                          </div>
-                          <div>
-                            <span>Plan: </span>
-                            <span className="font-semibold">{bk.paymentPlan}</span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+              <div className="p-5 space-y-4 text-xs max-h-[75vh] overflow-y-auto">
+                {/* Profile Box */}
+                <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-lg grid grid-cols-2 gap-3">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-500">Address</span>
+                    <p className="text-slate-800 font-medium mt-0.5">{selectedCustomer.address || 'Not specified'}</p>
                   </div>
-                )}
-              </div>
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-slate-500">KYC Verification</span>
+                    <p className="text-slate-800 font-medium mt-0.5">
+                      {selectedCustomer.idProofType}: {selectedCustomer.idProofNumber || 'Pending'}
+                    </p>
+                  </div>
+                </div>
 
-              {/* Payments History */}
-              <div>
-                <h3 className="font-bold text-sm text-slate-900 mb-2">Payment Receipts</h3>
-                {(!selectedCustomer.payments || selectedCustomer.payments.length === 0) ? (
-                  <p className="text-slate-400 italic">No payments recorded yet.</p>
-                ) : (
-                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
-                    {selectedCustomer.payments.map((pm: any) => (
-                      <div key={pm.id} className="p-3 flex items-center justify-between bg-white text-xs">
-                        <div>
-                          <p className="font-mono font-bold text-slate-800">{pm.receiptNumber}</p>
-                          <p className="text-[11px] text-slate-400">{formatDate(pm.paymentDate)} • {pm.paymentMethod}</p>
+                {/* Booking Contracts */}
+                <div>
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-2">Plot Contracts</h3>
+                  {(!selectedCustomer.bookings || selectedCustomer.bookings.length === 0) ? (
+                    <p className="text-slate-400 italic">No bookings recorded yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {selectedCustomer.bookings.map((bk: any) => (
+                        <div key={bk.id} className="p-3 border border-slate-200 rounded-lg bg-white space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-slate-900">
+                              Plot #{bk.plot?.plotNumber} in {bk.plot?.project?.name}
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                              {bk.status}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-slate-600 font-mono text-[11px]">
+                            <div>
+                              <span className="text-slate-400">Payable: </span>
+                              <span className="font-semibold text-slate-900">{formatINR(bk.finalPayableAmount)}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Advance: </span>
+                              <span className="font-semibold text-emerald-700">{formatINR(bk.bookingAdvancePaid)}</span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400">Plan: </span>
+                              <span className="font-semibold text-slate-800">{bk.paymentPlan}</span>
+                            </div>
+                          </div>
                         </div>
-                        <span className="font-mono font-bold text-emerald-700 text-sm">
-                          {formatINR(pm.amount)}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Payments History */}
+                <div>
+                  <h3 className="font-bold text-xs uppercase tracking-wider text-slate-700 mb-2">Receipt History</h3>
+                  {(!selectedCustomer.payments || selectedCustomer.payments.length === 0) ? (
+                    <p className="text-slate-400 italic">No payments recorded yet.</p>
+                  ) : (
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
+                      {selectedCustomer.payments.map((pm: any) => (
+                        <div key={pm.id} className="p-2.5 flex items-center justify-between bg-white text-xs">
+                          <div>
+                            <p className="font-mono font-bold text-slate-800">{pm.receiptNumber}</p>
+                            <p className="text-[11px] text-slate-500 font-mono">
+                              {formatDate(pm.paymentDate)} • {pm.paymentMethod}
+                            </p>
+                          </div>
+                          <span className="font-mono font-bold tracking-tight text-emerald-700 text-xs">
+                            {formatINR(pm.amount)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </ErrorBoundary>
   );
 }

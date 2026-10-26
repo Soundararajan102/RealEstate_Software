@@ -142,6 +142,14 @@ export class ProjectsService {
   }
 
   async createPlot(projectId: string, dto: CreatePlotDto) {
+    const project = await this.prisma.project.findUnique({
+      where: { id: projectId },
+    });
+
+    if (!project) {
+      throw new NotFoundException(`Project with ID ${projectId} does not exist`);
+    }
+
     const existing = await this.prisma.plot.findUnique({
       where: {
         projectId_plotNumber: {
@@ -159,31 +167,33 @@ export class ProjectsService {
     const area = dto.areaSqFt;
     const totalPrice = area * rate;
 
-    const plot = await this.prisma.plot.create({
-      data: {
-        projectId,
-        plotNumber: dto.plotNumber.trim(),
-        surveyNumber: dto.surveyNumber,
-        facing: dto.facing || Facing.NORTH,
-        dimension: dto.dimension,
-        areaSqFt: area,
-        ratePerSqFt: rate,
-        totalPrice,
-        isCornerPlot: dto.isCornerPlot || false,
-        status: dto.status || PlotStatus.AVAILABLE,
-      },
-    });
-
-    // Update project total plots count
-    await this.prisma.project.update({
-      where: { id: projectId },
-      data: {
-        totalPlots: {
-          increment: 1,
+    return this.prisma.$transaction(async (tx) => {
+      const plot = await tx.plot.create({
+        data: {
+          projectId,
+          plotNumber: dto.plotNumber.trim(),
+          surveyNumber: dto.surveyNumber,
+          facing: dto.facing || Facing.NORTH,
+          dimension: dto.dimension,
+          areaSqFt: area,
+          ratePerSqFt: rate,
+          totalPrice,
+          isCornerPlot: dto.isCornerPlot || false,
+          status: dto.status || PlotStatus.AVAILABLE,
         },
-      },
-    });
+      });
 
-    return plot;
+      // Atomically increment project total plots count
+      await tx.project.update({
+        where: { id: projectId },
+        data: {
+          totalPlots: {
+            increment: 1,
+          },
+        },
+      });
+
+      return plot;
+    });
   }
 }

@@ -1,5 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { PassportStrategy } from '@nestjs/passport';
+import { ConfigService } from '@nestjs/config';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -11,15 +12,27 @@ export interface JwtPayload {
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private prisma: PrismaService) {
+  constructor(
+    private readonly prisma: PrismaService,
+    configService: ConfigService,
+  ) {
+    const secret = configService.get<string>('JWT_SECRET');
+    if (!secret) {
+      throw new Error('JWT_SECRET is not configured');
+    }
+
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET || 'msp_super_secret_jwt_key_2026_durozen_real_estate',
+      secretOrKey: secret,
     });
   }
 
   async validate(payload: JwtPayload) {
+    if (!payload?.sub) {
+      throw new UnauthorizedException('Malformed token payload');
+    }
+
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
       select: {

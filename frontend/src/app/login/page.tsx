@@ -2,23 +2,23 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Landmark, Lock, Mail, ShieldAlert, ArrowRight, UserCheck } from 'lucide-react';
+import { Lock, Mail, ArrowRight, ShieldAlert } from 'lucide-react';
 import { apiRequest, setAuthSession } from '@/lib/api';
 
 export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState<string>('admin@mspproperties.com');
-  const [password, setPassword] = useState<string>('Password@123');
-  const [loading, setLoading] = useState<boolean>(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleLogin = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
     setLoading(true);
 
     try {
-      const res = await apiRequest('/auth/login', {
+      const res = await apiRequest<{ accessToken: string; user: any }>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({ email, password }),
       });
@@ -38,29 +38,23 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-950 flex items-center justify-center p-4 z-50 overflow-y-auto">
-      {/* Background Decorative Gradient */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-900/20 via-slate-950 to-slate-950 -z-10" />
-
-      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl text-white relative">
-        {/* Brand Crest */}
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-4 py-12">
+      <div className="max-w-md w-full bg-slate-900 border border-slate-800 rounded-2xl p-8 sm:p-10 shadow-2xl text-slate-100">
+        {/* Brand Header */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-500 to-emerald-500 mx-auto flex items-center justify-center text-slate-950 shadow-lg shadow-amber-500/20 mb-3">
-            <Landmark className="w-9 h-9" />
+          <div className="w-12 h-12 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-md mx-auto mb-3">
+            <span className="font-bold text-lg tracking-tight">MSP</span>
           </div>
-          <h1 className="text-2xl font-black tracking-wide text-white">
+          <h1 className="text-2xl font-bold tracking-tight text-white">
             MSP Properties
           </h1>
-          <p className="text-xs text-emerald-400 font-semibold uppercase tracking-wider mt-0.5">
-            Real Estate Management ERP
-          </p>
-          <p className="text-[11px] text-slate-400 mt-2">
-            Developed by Durozen Technologies Pvt. Ltd.
+          <p className="text-xs text-slate-400 font-medium mt-1">
+            Real Estate Management & Operations Suite
           </p>
         </div>
 
         {error && (
-          <div className="mb-6 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
+          <div className="mb-6 p-3.5 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center space-x-2">
             <ShieldAlert className="w-4 h-4 shrink-0 text-rose-400" />
             <span>{error}</span>
           </div>
@@ -68,35 +62,37 @@ export default function LoginPage() {
 
         <form onSubmit={handleLogin} className="space-y-4">
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+            <label htmlFor="login-email" className="block text-xs font-medium text-slate-300 mb-1.5">
               Authorized Email ID
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
+                id="login-email"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="staff@mspproperties.com"
-                className="w-full bg-slate-800/80 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                className="w-full bg-slate-800/80 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-400 focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+            <label htmlFor="login-password" className="block text-xs font-medium text-slate-300 mb-1.5">
               Password
             </label>
             <div className="relative">
-              <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
+                id="login-password"
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full bg-slate-800/80 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+                className="w-full bg-slate-800/80 border border-slate-700 rounded-lg pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-400 focus:outline-hidden focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
               />
             </div>
           </div>
@@ -104,59 +100,51 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full mt-2 py-3 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-900/30 flex items-center justify-center space-x-2 transition-all cursor-pointer disabled:opacity-50"
+            className="w-full mt-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center justify-center space-x-2 transition-all active:scale-[0.98] cursor-pointer disabled:opacity-50"
           >
             <span>{loading ? 'Authenticating...' : 'Sign In to Portal'}</span>
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </form>
 
         {/* Demo Fast Login Buttons */}
         <div className="mt-8 pt-6 border-t border-slate-800">
           <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider text-center mb-3">
-            Quick Demo Accounts
+            Quick Role Select (Dev Mode)
           </p>
-          <div className="grid grid-cols-3 gap-2 text-[10px]">
+          <div className="grid grid-cols-3 gap-2 text-xs">
             <button
               type="button"
               onClick={() => setDemoUser('admin@mspproperties.com')}
-              className={`p-2 rounded-lg border text-center transition-colors cursor-pointer ${
+              className={`p-2 rounded-lg border text-center transition-colors cursor-pointer text-xs font-medium ${
                 email === 'admin@mspproperties.com'
-                  ? 'bg-amber-500/10 border-amber-500 text-amber-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                  ? 'bg-slate-800 border-emerald-500 text-emerald-400'
+                  : 'border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <UserCheck className="w-3.5 h-3.5 mx-auto mb-1 text-amber-400" />
-              <span className="font-bold block">Admin</span>
-              <span className="text-[9px] text-slate-400">Full Access</span>
+              Admin
             </button>
-
             <button
               type="button"
-              onClick={() => setDemoUser('sales@mspproperties.com')}
-              className={`p-2 rounded-lg border text-center transition-colors cursor-pointer ${
-                email === 'sales@mspproperties.com'
-                  ? 'bg-emerald-500/10 border-emerald-500 text-emerald-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+              onClick={() => setDemoUser('vignesh@mspproperties.com')}
+              className={`p-2 rounded-lg border text-center transition-colors cursor-pointer text-xs font-medium ${
+                email === 'vignesh@mspproperties.com'
+                  ? 'bg-slate-800 border-emerald-500 text-emerald-400'
+                  : 'border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <UserCheck className="w-3.5 h-3.5 mx-auto mb-1 text-emerald-400" />
-              <span className="font-bold block">Sales Mgr</span>
-              <span className="text-[9px] text-slate-400">Bookings</span>
+              Executive
             </button>
-
             <button
               type="button"
-              onClick={() => setDemoUser('accounts@mspproperties.com')}
-              className={`p-2 rounded-lg border text-center transition-colors cursor-pointer ${
-                email === 'accounts@mspproperties.com'
-                  ? 'bg-blue-500/10 border-blue-500 text-blue-300'
-                  : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+              onClick={() => setDemoUser('anitha@mspproperties.com')}
+              className={`p-2 rounded-lg border text-center transition-colors cursor-pointer text-xs font-medium ${
+                email === 'anitha@mspproperties.com'
+                  ? 'bg-slate-800 border-emerald-500 text-emerald-400'
+                  : 'border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <UserCheck className="w-3.5 h-3.5 mx-auto mb-1 text-blue-400" />
-              <span className="font-bold block">Accounts</span>
-              <span className="text-[9px] text-slate-400">Collections</span>
+              Accountant
             </button>
           </div>
         </div>

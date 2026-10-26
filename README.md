@@ -15,11 +15,38 @@ A simple, centralized, enterprise-grade system to manage customers, brokers, sal
 
 ## 🚀 Quick Start Guide
 
-### 1. Prerequisites
+### Option A: 🐳 Docker Compose (Recommended)
+
+Run the full stack (PostgreSQL database, NestJS backend, and Next.js frontend) with a single command:
+
+```bash
+# Build and start all services (database, backend, frontend)
+docker compose up -d
+
+# Check service logs
+docker compose logs -f
+
+# Stop all services
+docker compose down
+```
+
+The database container is automatically created with:
+`DATABASE_URL="postgresql://postgres:root@localhost:5432/msp_real_estate"`
+- **Frontend Portal**: http://localhost:3000
+- **Backend API**: http://localhost:4000/api
+- **PostgreSQL**: `localhost:5432` (`postgres` / `root` / `msp_real_estate`)
+
+*Note: If port 5432 is already bound by an existing local PostgreSQL service, set `DB_PORT=5433` in `.env` or run `DB_PORT=5433 docker compose up -d`.*
+
+---
+
+### Option B: 💻 Manual Local Setup
+
+#### 1. Prerequisites
 - Node.js v18+ (tested on Node v22)
 - PostgreSQL running on `localhost:5432` with user `postgres` (password: `root`)
 
-### 2. Backend Setup
+#### 2. Backend Setup
 ```bash
 cd backend
 # Database URL is configured in .env:
@@ -35,7 +62,7 @@ node dist/main.js
 # API running at: http://localhost:4000/api
 ```
 
-### 3. Frontend Setup
+#### 3. Frontend Setup
 ```bash
 cd frontend
 

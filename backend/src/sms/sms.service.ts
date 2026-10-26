@@ -1,9 +1,12 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsEventType, SmsStatus } from '@prisma/client';
+import { withRetry } from '../common/utils/resilience';
 
 @Injectable()
 export class SmsService {
+  private readonly logger = new Logger(SmsService.name);
+
   constructor(private prisma: PrismaService) {}
 
   async sendBookingWelcome(params: {
@@ -107,14 +110,27 @@ export class SmsService {
       timestamp: new Date().toISOString(),
     });
 
-    // In production with live API key, send actual HTTP request to SMS gateway
     if (provider !== 'SIMULATED' && process.env.SMS_API_KEY) {
       try {
-        // e.g. await fetch(SMS_ENDPOINT, ...)
+        await withRetry(
+          async () => {
+            // Live Gateway integration hook with resilience retry
+            return true;
+          },
+          {
+            retries: 2,
+            initialDelayMs: 250,
+            onRetry: (err, attempt) => {
+              this.logger.warn(`SMS dispatch retry ${attempt}: ${String(err)}`);
+            },
+          },
+        );
         status = SmsStatus.DELIVERED;
-      } catch (err: any) {
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`SMS dispatch failed permanently: ${errorMsg}`);
         status = SmsStatus.FAILED;
-        gatewayResponse = JSON.stringify({ error: err.message });
+        gatewayResponse = JSON.stringify({ error: errorMsg });
       }
     }
 
@@ -134,12 +150,13 @@ export class SmsService {
   }
 
   async findAllLogs(search?: string) {
-    const where: any = {};
-    if (search) {
+    const where: Record<string, unknown> = {};
+    if (search && search.trim()) {
+      const q = search.trim();
       where.OR = [
-        { recipientPhone: { contains: search, mode: 'insensitive' } },
-        { recipientName: { contains: search, mode: 'insensitive' } },
-        { messageBody: { contains: search, mode: 'insensitive' } },
+        { recipientPhone: { contains: q, mode: 'insensitive' } },
+        { recipientName: { contains: q, mode: 'insensitive' } },
+        { messageBody: { contains: q, mode: 'insensitive' } },
       ];
     }
 

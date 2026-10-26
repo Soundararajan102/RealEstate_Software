@@ -9,16 +9,17 @@ export class BrokersService {
 
   private async generateNextBrokerCode(): Promise<string> {
     const lastBroker = await this.prisma.broker.findFirst({
+      where: { brokerCode: { startsWith: 'BRK-' } },
       orderBy: { createdAt: 'desc' },
       select: { brokerCode: true },
     });
 
-    if (!lastBroker || !lastBroker.brokerCode.startsWith('BRK-')) {
-      return 'BRK-1004';
+    if (!lastBroker) {
+      return 'BRK-1001';
     }
 
     const numPart = parseInt(lastBroker.brokerCode.replace('BRK-', ''), 10);
-    const nextNum = isNaN(numPart) ? 1004 : numPart + 1;
+    const nextNum = isNaN(numPart) ? 1001 : numPart + 1;
     return `BRK-${nextNum}`;
   }
 

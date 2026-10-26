@@ -9,16 +9,17 @@ export class UsersService {
 
   private async generateNextEmployeeId(): Promise<string> {
     const lastUser = await this.prisma.user.findFirst({
+      where: { employeeId: { startsWith: 'EMP-' } },
       orderBy: { createdAt: 'desc' },
       select: { employeeId: true },
     });
 
-    if (!lastUser || !lastUser.employeeId.startsWith('EMP-')) {
-      return 'EMP-1004';
+    if (!lastUser) {
+      return 'EMP-1001';
     }
 
     const numPart = parseInt(lastUser.employeeId.replace('EMP-', ''), 10);
-    const nextNum = isNaN(numPart) ? 1004 : numPart + 1;
+    const nextNum = isNaN(numPart) ? 1001 : numPart + 1;
     return `EMP-${nextNum}`;
   }
 

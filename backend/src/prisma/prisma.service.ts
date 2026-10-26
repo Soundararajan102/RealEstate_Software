@@ -1,17 +1,25 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
-  constructor() {
+  constructor(private readonly configService: ConfigService) {
+    const databaseUrl = configService.get<string>('DATABASE_URL');
+    if (!databaseUrl) {
+      throw new Error('DATABASE_URL must be provided via environment variables');
+    }
+
     super({
       datasources: {
         db: {
-          url:
-            process.env.DATABASE_URL ||
-            'postgresql://postgres:root@localhost:5432/msp_real_estate?schema=public',
+          url: databaseUrl,
         },
       },
+      log:
+        process.env.NODE_ENV === 'development'
+          ? ['error', 'warn']
+          : ['error'],
     });
   }
 

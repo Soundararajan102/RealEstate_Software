@@ -1,14 +1,21 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { MessageSquare, Search, Send, PlusCircle, CheckCircle, Clock, X, AlertCircle } from 'lucide-react';
-import { apiRequest, formatDate } from '@/lib/api';
+import React, { useState, useEffect, useMemo } from 'react';
+import { MessageSquare, PlusCircle, X } from 'lucide-react';
+import { apiRequest } from '@/lib/api';
+import { useToast } from '@/lib/toast';
+import { useDebounce } from '@/lib/useDebounce';
 import { SmsLog } from '@/types';
+import { DataTable, ColumnDef } from '@/components/ui/DataTable';
+import { TruncatedCell } from '@/components/ui/Tooltip';
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 
 export default function SmsPage() {
+  const toast = useToast();
   const [logs, setLogs] = useState<SmsLog[]>([]);
   const [search, setSearch] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(true);
+  const debouncedSearch = useDebounce(search, 300);
 
   // Send Custom SMS Modal
   const [isSendOpen, setIsSendOpen] = useState<boolean>(false);
@@ -16,26 +23,36 @@ export default function SmsPage() {
   const [name, setName] = useState<string>('');
   const [message, setMessage] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
 
-  const loadLogs = async () => {
+  const loadLogs = async (query = debouncedSearch) => {
     try {
       setLoading(true);
-      const res = await apiRequest<SmsLog[]>(`/sms?search=${encodeURIComponent(search)}`);
+      const res = await apiRequest<SmsLog[]>(`/sms?search=${encodeURIComponent(query)}`);
       setLogs(res);
-    } catch (err: any) {
-      console.error(err);
+    } catch (err: unknown) {
+      console.error('Failed to load SMS logs:', err);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      loadLogs();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [search]);
+    loadLogs(debouncedSearch);
+  }, [debouncedSearch]);
+
+  // Esc key closes modal
+  useEffect(() => {
+    if (!isSendOpen) return;
+    document.body.style.overflow = 'hidden';
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsSendOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSendOpen]);
 
   const handleSendCustomSms = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,201 +71,228 @@ export default function SmsPage() {
       setPhone('');
       setName('');
       setMessage('');
-      setFeedback('SMS dispatched successfully!');
-      setTimeout(() => setFeedback(null), 4000);
-      loadLogs();
-    } catch (err: any) {
-      alert(`Error sending SMS: ${err.message}`);
+      toast.success('SMS dispatched successfully');
+      loadLogs(debouncedSearch);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Error sending SMS';
+      toast.error(msg);
     } finally {
       setSubmitting(false);
     }
   };
 
-  return (
-    <div className="space-y-6">
-      {/* Feedback Alert */}
-      {feedback && (
-        <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center space-x-2">
-          <CheckCircle className="w-4 h-4 text-emerald-600" />
-          <span>{feedback}</span>
-        </div>
-      )}
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center space-x-2">
-            <MessageSquare className="w-6 h-6 text-emerald-600" />
-            <span>Customer & Project SMS Center</span>
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Automated event-based SMS alerts (Welcome, Payments, Reminders) and transactional audit logs.
-          </p>
-        </div>
-
-        <button
-          onClick={() => setIsSendOpen(true)}
-          className="inline-flex items-center space-x-1.5 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl shadow-md shadow-emerald-900/20 cursor-pointer self-start sm:self-auto"
-        >
-          <Send className="w-4 h-4" />
-          <span>Compose Custom SMS</span>
-        </button>
-      </div>
-
-      {/* Search Toolbar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex items-center justify-between">
-        <div className="relative w-full max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-          <input
-            type="text"
-            placeholder="Search by phone number, customer name, or message text..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-hidden focus:ring-1 focus:ring-emerald-500"
+  const columns = useMemo<ColumnDef<SmsLog>[]>(
+    () => [
+      {
+        key: 'sentAt',
+        header: 'Dispatched At',
+        sortable: true,
+        width: '150px',
+        render: (log) => (
+          <span className="text-slate-600 font-mono text-[11px] whitespace-nowrap">
+            {new Date(log.sentAt).toLocaleString('en-IN', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
+        ),
+      },
+      {
+        key: 'recipient',
+        header: 'Recipient',
+        sortable: true,
+        render: (log) => (
+          <div>
+            <p className="font-semibold text-slate-900 leading-tight">
+              {log.recipientName || 'Customer'}
+            </p>
+            <p className="text-[11px] text-slate-500 font-mono">
+              {log.recipientPhone}
+            </p>
+          </div>
+        ),
+      },
+      {
+        key: 'eventType',
+        header: 'Trigger Type',
+        sortable: true,
+        align: 'center',
+        render: (log) => (
+          <span className="inline-block px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-semibold text-[10px] uppercase tracking-wider">
+            {log.eventType.replace('_', ' ')}
+          </span>
+        ),
+      },
+      {
+        key: 'messageBody',
+        header: 'Message Payload',
+        render: (log) => (
+          <TruncatedCell
+            content={log.messageBody}
+            maxWidth="max-w-[420px]"
+            className="text-slate-700 leading-relaxed"
           />
+        ),
+      },
+      {
+        key: 'status',
+        header: 'Gateway Status',
+        sortable: true,
+        align: 'center',
+        render: (log) => (
+          <span
+            className={`inline-block px-2.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+              log.status === 'DELIVERED'
+                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                : log.status === 'SIMULATED'
+                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                  : 'bg-rose-50 text-rose-700 border border-rose-200'
+            }`}
+          >
+            {log.status}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
+
+  return (
+    <ErrorBoundary componentName="SmsCommunications">
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
+          <div>
+            <h1 className="text-lg font-bold text-slate-900 tracking-tight flex items-center space-x-2">
+              <MessageSquare className="w-5 h-5 text-emerald-700" />
+              <span>SMS Communications & Dispatch Telemetry</span>
+            </h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Automated event-based SMS alerts (Welcome, Receipts, Installment Reminders) and transactional audit logs.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsSendOpen(true)}
+            className="inline-flex items-center space-x-1.5 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold rounded-md shadow-xs transition-colors cursor-pointer self-start sm:self-auto"
+          >
+            <PlusCircle className="w-3.5 h-3.5" />
+            <span>Compose Direct SMS</span>
+          </button>
         </div>
-        <span className="text-xs text-slate-500 font-medium hidden sm:inline">
-          Total Dispatched SMS: {logs.length}
-        </span>
-      </div>
 
-      {/* SMS Logs Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase text-[10px] tracking-wider">
-              <tr>
-                <th className="py-3 px-4">Timestamp</th>
-                <th className="py-3 px-4">Recipient</th>
-                <th className="py-3 px-4">Event Trigger</th>
-                <th className="py-3 px-4">Message Content</th>
-                <th className="py-3 px-4 text-center">Gateway Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {logs.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="py-8 text-center text-slate-400">
-                    No SMS transmission logs found.
-                  </td>
-                </tr>
-              ) : (
-                logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-3.5 px-4 text-slate-500 whitespace-nowrap">
-                      {new Date(log.sentAt).toLocaleString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </td>
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <p className="font-bold text-slate-900">{log.recipientName || 'Customer'}</p>
-                      <p className="font-mono text-emerald-700 text-[11px] font-semibold">
-                        {log.recipientPhone}
-                      </p>
-                    </td>
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <span className="inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 uppercase">
-                        {log.eventType.replace('_', ' ')}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-700 max-w-lg">
-                      <p className="line-clamp-2">{log.messageBody}</p>
-                    </td>
-                    <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                          log.status === 'DELIVERED'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : log.status === 'SIMULATED'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : 'bg-rose-50 text-rose-700 border border-rose-200'
-                        }`}
-                      >
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        {log.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+        {/* Enterprise Data Grid */}
+        <DataTable<SmsLog>
+          data={logs}
+          columns={columns}
+          keyExtractor={(item) => item.id}
+          loading={loading}
+          searchPlaceholder="Search by recipient phone, name, or message snippet..."
+          externalSearchValue={search}
+          onSearchChange={setSearch}
+          emptyTitle="No SMS dispatch logs found"
+          emptyDescription="No automated or manual SMS dispatches match your search query."
+          ariaLabel="SMS communication audit ledger"
+        />
 
-      {/* Compose Custom SMS Modal */}
-      {isSendOpen && (
-        <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-6 bg-slate-900/75 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto sm:my-8 relative">
-            <div className="sticky top-0 z-20 bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-800 shadow-sm">
-              <h2 className="font-bold text-sm">Send Direct SMS Broadcast</h2>
-              <button onClick={() => setIsSendOpen(false)} className="p-1.5 text-slate-400 hover:text-white rounded-md">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSendCustomSms} className="p-6 space-y-3.5 text-xs">
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Recipient Mobile Number *</label>
-                <input
-                  type="tel"
-                  required
-                  placeholder="9842100000"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Recipient Name (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Mr. Rajesh Kumar"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-                />
-              </div>
-
-              <div>
-                <label className="font-semibold text-slate-700 block mb-1">Message Body *</label>
-                <textarea
-                  rows={4}
-                  required
-                  placeholder="Type your message here (MSP Properties branding included automatically)..."
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-1 focus:ring-emerald-500 focus:outline-hidden"
-                />
-                <p className="text-[10px] text-slate-400 mt-1 text-right">
-                  {message.length} characters (1 SMS credit)
-                </p>
-              </div>
-
-              <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-200">
+        {/* Compose Custom SMS Modal */}
+        {isSendOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-6 bg-slate-900/75 backdrop-blur-xs overflow-y-auto"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="compose-sms-title"
+          >
+            <div className="bg-white rounded-xl shadow-2xl max-w-md w-full overflow-hidden border border-slate-200 my-auto relative">
+              <div className="sticky top-0 z-20 bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between border-b border-slate-800 shadow-xs">
+                <h2 id="compose-sms-title" className="font-bold text-xs uppercase tracking-wider text-slate-200">
+                  Send Direct SMS Broadcast
+                </h2>
                 <button
                   type="button"
                   onClick={() => setIsSendOpen(false)}
-                  className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-semibold"
+                  aria-label="Close dialog"
+                  className="p-1 text-slate-400 hover:text-white rounded cursor-pointer"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold shadow-md shadow-emerald-900/20 cursor-pointer disabled:opacity-50"
-                >
-                  {submitting ? 'Transmitting...' : 'Dispatch SMS'}
+                  <X className="w-4 h-4" />
                 </button>
               </div>
-            </form>
+
+              <form onSubmit={handleSendCustomSms} className="p-5 space-y-3 text-xs">
+                <div>
+                  <label htmlFor="sms-phone" className="font-semibold text-slate-700 block mb-1">
+                    Recipient Phone Number (10 digits) *
+                  </label>
+                  <input
+                    id="sms-phone"
+                    type="tel"
+                    required
+                    pattern="[6-9][0-9]{9}"
+                    placeholder="e.g. 9840123456"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-md border border-slate-300 font-mono font-medium focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="sms-name" className="font-semibold text-slate-700 block mb-1">
+                    Recipient Full Name
+                  </label>
+                  <input
+                    id="sms-name"
+                    type="text"
+                    placeholder="e.g. Rajesh Kumar"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-md border border-slate-300 font-medium focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label htmlFor="sms-body" className="font-semibold text-slate-700">Message Body *</label>
+                    <span className="text-[11px] font-mono text-slate-400">
+                      {message.length} chars (1 credit)
+                    </span>
+                  </div>
+                  <textarea
+                    id="sms-body"
+                    required
+                    rows={4}
+                    maxLength={320}
+                    placeholder="Enter transactional notification text..."
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    className="w-full px-3 py-1.5 rounded-md border border-slate-300 font-medium focus:ring-1 focus:ring-slate-900 focus:outline-hidden"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end space-x-2 pt-3 border-t border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setIsSendOpen(false)}
+                    className="px-3 py-1.5 border border-slate-300 text-slate-700 rounded-md hover:bg-slate-50 font-semibold cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-md font-semibold text-xs shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {submitting ? 'Dispatching...' : 'Dispatch SMS'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </ErrorBoundary>
   );
 }

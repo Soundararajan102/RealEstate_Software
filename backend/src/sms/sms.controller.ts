@@ -2,6 +2,9 @@ import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
 import { SmsService } from './sms.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { Role } from '@prisma/client';
+import { SendCustomSmsDto, RemindInstallmentDto } from './dto/sms.dto';
 
 @Controller('sms')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -14,35 +17,17 @@ export class SmsController {
   }
 
   @Post('send-custom')
-  async sendCustom(
-    @Body()
-    body: {
-      recipientPhone: string;
-      recipientName?: string;
-      customerId?: string;
-      messageBody: string;
-    },
-  ) {
-    return this.smsService.sendCustomSms(body);
+  @Roles(Role.ADMIN)
+  async sendCustom(@Body() dto: SendCustomSmsDto) {
+    return this.smsService.sendCustomSms(dto);
   }
 
   @Post('remind-installment')
-  async remindInstallment(
-    @Body()
-    body: {
-      bookingId: string;
-      customerId: string;
-      customerPhone: string;
-      customerName: string;
-      installmentNumber: number;
-      amount: number;
-      dueDate: string;
-      plotNumber: string;
-    },
-  ) {
+  @Roles(Role.ADMIN, Role.ACCOUNTS_EXECUTIVE)
+  async remindInstallment(@Body() dto: RemindInstallmentDto) {
     return this.smsService.sendInstallmentReminder({
-      ...body,
-      dueDate: new Date(body.dueDate),
+      ...dto,
+      dueDate: new Date(dto.dueDate),
     });
   }
 }

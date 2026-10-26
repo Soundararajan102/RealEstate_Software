@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmsService } from '../sms/sms.service';
 import { CreatePaymentDto } from './dto/payment.dto';
@@ -11,19 +11,22 @@ export class PaymentsService {
     private smsService: SmsService,
   ) {}
 
+  private readonly logger = new Logger(PaymentsService.name);
+
   private async generateNextReceiptNumber(): Promise<string> {
+    const year = new Date().getFullYear();
     const lastPayment = await this.prisma.payment.findFirst({
+      where: { receiptNumber: { startsWith: `RCP-${year}-` } },
       orderBy: { createdAt: 'desc' },
       select: { receiptNumber: true },
     });
 
-    const year = new Date().getFullYear();
-    if (!lastPayment || !lastPayment.receiptNumber.startsWith(`RCP-${year}-`)) {
-      return `RCP-${year}-0004`;
+    if (!lastPayment) {
+      return `RCP-${year}-0001`;
     }
 
     const numPart = parseInt(lastPayment.receiptNumber.replace(`RCP-${year}-`, ''), 10);
-    const nextNum = isNaN(numPart) ? 4 : numPart + 1;
+    const nextNum = isNaN(numPart) ? 1 : numPart + 1;
     return `RCP-${year}-${String(nextNum).padStart(4, '0')}`;
   }
 
@@ -100,37 +103,45 @@ export class PaymentsService {
   }
 
   async recordPayment(dto: CreatePaymentDto, recordedById: string) {
+    if (dto.amount <= 0) {
+      throw new BadRequestException('Payment amount must be greater than zero');
+    }
+
     const booking = await this.prisma.booking.findUnique({
       where: { id: dto.bookingId },
       include: {
         customer: true,
         plot: { include: { project: true } },
-        payments: true,
-        installments: { orderBy: { installmentNumber: 'asc' } },
       },
     });
 
     if (!booking) {
-      throw new NotFoundException('Booking not found');
+      throw new NotFoundException('Booking contract not found');
     }
 
-    const currentlyPaid = booking.payments.reduce((sum, p) => sum + Number(p.amount), 0);
-    const remainingBalance = Number(booking.finalPayableAmount) - currentlyPaid;
-
-    if (dto.amount > remainingBalance) {
-      throw new BadRequestException(
-        `Payment amount (₹${dto.amount.toLocaleString('en-IN')}) exceeds remaining balance of ₹${remainingBalance.toLocaleString('en-IN')}`,
-      );
+    if (booking.status === BookingStatus.CANCELLED) {
+      throw new BadRequestException('Cannot record payments against a cancelled booking');
     }
 
     const receiptNumber = await this.generateNextReceiptNumber();
-    const newTotalPaid = currentlyPaid + dto.amount;
-    const newPendingBalance = Math.max(0, Number(booking.finalPayableAmount) - newTotalPaid);
-    const isNowFullyPaid = newPendingBalance <= 0;
 
-    // Execute atomic transaction
-    const payment = await this.prisma.$transaction(async (tx) => {
-      // 1. Create Payment
+    // Execute atomic transaction to prevent race conditions on balance and installment allocations
+    const { payment, remainingBalanceAfterPayment } = await this.prisma.$transaction(async (tx) => {
+      // 1. Concurrently safe balance check inside transaction
+      const paymentsAgg = await tx.payment.aggregate({
+        where: { bookingId: booking.id },
+        _sum: { amount: true },
+      });
+      const currentlyPaid = Number(paymentsAgg._sum.amount || 0);
+      const remainingBalance = Number(booking.finalPayableAmount) - currentlyPaid;
+
+      if (dto.amount > remainingBalance) {
+        throw new BadRequestException(
+          `Payment amount (₹${dto.amount.toLocaleString('en-IN')}) exceeds remaining balance of ₹${remainingBalance.toLocaleString('en-IN')}`,
+        );
+      }
+
+      // 2. Create Payment Record
       const newPayment = await tx.payment.create({
         data: {
           receiptNumber,
@@ -147,9 +158,14 @@ export class PaymentsService {
         },
       });
 
-      // 2. Reallocate installments if installment plan exists
+      // 3. Atomically reallocate installments if schedule exists
+      const installments = await tx.installmentSchedule.findMany({
+        where: { bookingId: booking.id },
+        orderBy: { installmentNumber: 'asc' },
+      });
+
       let unallocated = dto.amount;
-      for (const inst of booking.installments) {
+      for (const inst of installments) {
         if (unallocated <= 0) break;
         const instExpected = Number(inst.expectedAmount);
         const instPaid = Number(inst.paidAmount);
@@ -172,7 +188,10 @@ export class PaymentsService {
         }
       }
 
-      // 3. If fully settled, update booking status to COMPLETED and plot to SOLD
+      const remainingBalanceAfterPayment = Math.max(0, remainingBalance - dto.amount);
+      const isNowFullyPaid = remainingBalanceAfterPayment <= 0;
+
+      // 4. If fully settled, update booking status to COMPLETED and plot to SOLD
       if (isNowFullyPaid) {
         await tx.booking.update({
           where: { id: booking.id },
@@ -185,10 +204,10 @@ export class PaymentsService {
         });
       }
 
-      return newPayment;
+      return { payment: newPayment, remainingBalanceAfterPayment };
     });
 
-    // 4. Trigger SMS receipt confirmation
+    // 5. Trigger SMS receipt confirmation asynchronously
     try {
       await this.smsService.sendPaymentReceipt({
         paymentId: payment.id,
@@ -199,10 +218,10 @@ export class PaymentsService {
         amount: dto.amount,
         receiptNumber: payment.receiptNumber,
         plotNumber: booking.plot.plotNumber,
-        remainingBalance: newPendingBalance,
+        remainingBalance: remainingBalanceAfterPayment,
       });
     } catch (smsErr) {
-      console.error('Non-blocking SMS error:', smsErr);
+      this.logger.warn(`Non-blocking SMS receipt error for ${payment.receiptNumber}: ${(smsErr as Error).message}`);
     }
 
     return this.findOne(payment.id);

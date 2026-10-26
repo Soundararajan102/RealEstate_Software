@@ -60,14 +60,15 @@ export async function apiRequest<T = any>(
   return data;
 }
 
+const inrFormatter = new Intl.NumberFormat('en-IN', {
+  style: 'currency',
+  currency: 'INR',
+  maximumFractionDigits: 0,
+});
+
 export function formatINR(val: number | string | null | undefined): string {
-  if (val === null || val === undefined || isNaN(Number(val))) return '₹0';
-  const num = Number(val);
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(num);
+  // ponytail: stdlib Intl.NumberFormat handles formatting; coerce invalid/empty to 0
+  return inrFormatter.format(Number(val) || 0);
 }
 
 export function formatDate(dateStr: string | Date | null | undefined): string {

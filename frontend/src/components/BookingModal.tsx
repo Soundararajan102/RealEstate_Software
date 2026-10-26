@@ -27,9 +27,9 @@ export default function BookingModal({
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [selectedBrokerId, setSelectedBrokerId] = useState<string>('');
 
-  const [agreedRate, setAgreedRate] = useState<number>(1650);
-  const [discountAmount, setDiscountAmount] = useState<number>(0);
-  const [advancePaid, setAdvancePaid] = useState<number>(500000);
+  const [agreedRate, setAgreedRate] = useState<number | string>(1650);
+  const [discountAmount, setDiscountAmount] = useState<number | string>(0);
+  const [advancePaid, setAdvancePaid] = useState<number | string>(500000);
   const [paymentPlan, setPaymentPlan] = useState<'FULL_PAYMENT' | 'INSTALLMENT'>('INSTALLMENT');
   const [installmentCount, setInstallmentCount] = useState<number>(3);
   const [advanceMethod, setAdvanceMethod] = useState<'CASH' | 'CHEQUE' | 'BANK_TRANSFER' | 'UPI'>('CHEQUE');
@@ -38,6 +38,20 @@ export default function BookingModal({
 
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Close on Escape & Lock body scroll
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'unset';
+    };
+  }, [isOpen, onClose]);
 
   // Load initial dropdown data
   useEffect(() => {
@@ -94,9 +108,13 @@ export default function BookingModal({
 
   // Financial calculations
   const plotArea = selectedPlot ? Number(selectedPlot.areaSqFt) : 1200;
-  const baseTotal = plotArea * agreedRate;
-  const finalPayable = Math.max(0, baseTotal - Number(discountAmount || 0));
-  const remainingAfterAdvance = Math.max(0, finalPayable - Number(advancePaid || 0));
+  const numAgreedRate = typeof agreedRate === 'number' ? agreedRate : Number(agreedRate) || 0;
+  const numDiscount = typeof discountAmount === 'number' ? discountAmount : Number(discountAmount) || 0;
+  const numAdvance = typeof advancePaid === 'number' ? advancePaid : Number(advancePaid) || 0;
+
+  const baseTotal = plotArea * numAgreedRate;
+  const finalPayable = Math.max(0, baseTotal - numDiscount);
+  const remainingAfterAdvance = Math.max(0, finalPayable - numAdvance);
   const installmentAmount =
     paymentPlan === 'INSTALLMENT' && installmentCount > 0
       ? Math.round(remainingAfterAdvance / installmentCount)
@@ -146,15 +164,26 @@ export default function BookingModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-6 bg-slate-900/75 backdrop-blur-sm overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto sm:my-8 relative">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="booking-modal-title"
+      className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 sm:p-6 bg-slate-900/75 backdrop-blur-sm overflow-y-auto"
+    >
+      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95 duration-150 my-auto sm:my-8 relative">
         {/* Header */}
-        <div className="sticky top-0 z-20 bg-slate-900 text-white px-6 py-4 flex items-center justify-between border-b border-slate-800 shadow-sm">
-          <div className="flex items-center space-x-2">
-            <Building className="w-5 h-5 text-emerald-400" />
-            <h2 className="font-bold text-base">New Plot Booking Contract</h2>
+        <div className="sticky top-0 z-20 bg-slate-900 text-white px-5 py-4 flex items-center justify-between border-b border-slate-800 shadow-xs">
+          <div className="flex items-center space-x-2.5">
+            <div className="w-7 h-7 rounded-md bg-emerald-600 flex items-center justify-center text-white text-xs font-bold">
+              +
+            </div>
+            <h2 id="booking-modal-title" className="font-semibold text-sm tracking-tight text-white">New Plot Booking Contract</h2>
           </div>
-          <button onClick={onClose} className="p-1.5 text-slate-400 hover:text-white rounded-md">
+          <button
+            onClick={onClose}
+            aria-label="Close dialog"
+            className="p-1 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 cursor-pointer transition-colors"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -171,8 +200,11 @@ export default function BookingModal({
           {/* Project & Plot Selection */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="font-semibold text-slate-700 block mb-1">Select Project *</label>
+              <label htmlFor="booking-project-select" className="font-semibold text-slate-700 block mb-1">
+                Select Project *
+              </label>
               <select
+                id="booking-project-select"
                 value={selectedProjectId}
                 onChange={(e) => setSelectedProjectId(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
@@ -186,10 +218,11 @@ export default function BookingModal({
             </div>
 
             <div>
-              <label className="font-semibold text-slate-700 block mb-1">
+              <label htmlFor="booking-plot-select" className="font-semibold text-slate-700 block mb-1">
                 Available Plot * {plots.length === 0 && '(No open plots)'}
               </label>
               <select
+                id="booking-plot-select"
                 value={selectedPlotId}
                 onChange={(e) => setSelectedPlotId(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
@@ -206,8 +239,11 @@ export default function BookingModal({
           {/* Customer & Broker Selection */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="font-semibold text-slate-700 block mb-1">Customer *</label>
+              <label htmlFor="booking-customer-select" className="font-semibold text-slate-700 block mb-1">
+                Customer *
+              </label>
               <select
+                id="booking-customer-select"
                 value={selectedCustomerId}
                 onChange={(e) => setSelectedCustomerId(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
@@ -222,8 +258,11 @@ export default function BookingModal({
             </div>
 
             <div>
-              <label className="font-semibold text-slate-700 block mb-1">Referring Broker (Optional)</label>
+              <label htmlFor="booking-broker-select" className="font-semibold text-slate-700 block mb-1">
+                Referring Broker (Optional)
+              </label>
               <select
+                id="booking-broker-select"
                 value={selectedBrokerId}
                 onChange={(e) => setSelectedBrokerId(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
@@ -241,23 +280,29 @@ export default function BookingModal({
           {/* Rate & Discount */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="font-semibold text-slate-700 block mb-1">Agreed Rate / Sq.Ft. (₹) *</label>
+              <label htmlFor="booking-agreed-rate" className="font-semibold text-slate-700 block mb-1">
+                Agreed Rate / Sq.Ft. (₹) *
+              </label>
               <input
+                id="booking-agreed-rate"
                 type="number"
                 min="1"
                 value={agreedRate}
-                onChange={(e) => setAgreedRate(Number(e.target.value))}
+                onChange={(e) => setAgreedRate(e.target.value === '' ? '' : Number(e.target.value))}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
               />
             </div>
 
             <div>
-              <label className="font-semibold text-slate-700 block mb-1">Special Discount (₹)</label>
+              <label htmlFor="booking-discount-amount" className="font-semibold text-slate-700 block mb-1">
+                Special Discount (₹)
+              </label>
               <input
+                id="booking-discount-amount"
                 type="number"
                 min="0"
                 value={discountAmount}
-                onChange={(e) => setDiscountAmount(Number(e.target.value))}
+                onChange={(e) => setDiscountAmount(e.target.value === '' ? '' : Number(e.target.value))}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
               />
             </div>
@@ -282,8 +327,11 @@ export default function BookingModal({
           {/* Payment Plan */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="font-semibold text-slate-700 block mb-1">Payment Plan *</label>
+              <label htmlFor="booking-payment-plan" className="font-semibold text-slate-700 block mb-1">
+                Payment Plan *
+              </label>
               <select
+                id="booking-payment-plan"
                 value={paymentPlan}
                 onChange={(e) => setPaymentPlan(e.target.value as any)}
                 className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
@@ -295,8 +343,11 @@ export default function BookingModal({
 
             {paymentPlan === 'INSTALLMENT' && (
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Number of Installments *</label>
+                <label htmlFor="booking-installment-count" className="font-semibold text-slate-700 block mb-1">
+                  Number of Installments *
+                </label>
                 <select
+                  id="booking-installment-count"
                   value={installmentCount}
                   onChange={(e) => setInstallmentCount(Number(e.target.value))}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
@@ -317,20 +368,26 @@ export default function BookingModal({
             </span>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Advance Amount (₹)</label>
+                <label htmlFor="booking-advance-amount" className="font-semibold text-slate-700 block mb-1">
+                  Advance Amount (₹)
+                </label>
                 <input
+                  id="booking-advance-amount"
                   type="number"
                   min="0"
                   max={finalPayable}
                   value={advancePaid}
-                  onChange={(e) => setAdvancePaid(Number(e.target.value))}
+                  onChange={(e) => setAdvancePaid(e.target.value === '' ? '' : Number(e.target.value))}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
                 />
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Payment Method</label>
+                <label htmlFor="booking-advance-method" className="font-semibold text-slate-700 block mb-1">
+                  Payment Method
+                </label>
                 <select
+                  id="booking-advance-method"
                   value={advanceMethod}
                   onChange={(e) => setAdvanceMethod(e.target.value as any)}
                   className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
@@ -343,8 +400,11 @@ export default function BookingModal({
               </div>
 
               <div>
-                <label className="font-semibold text-slate-700 block mb-1">Ref / Cheque No.</label>
+                <label htmlFor="booking-advance-ref" className="font-semibold text-slate-700 block mb-1">
+                  Ref / Cheque No.
+                </label>
                 <input
+                  id="booking-advance-ref"
                   type="text"
                   placeholder="e.g. CHQ-109281"
                   value={advanceRef}
@@ -355,7 +415,7 @@ export default function BookingModal({
             </div>
 
             {paymentPlan === 'INSTALLMENT' && (
-              <p className="text-[11px] text-emerald-800">
+              <p className="text-xs text-emerald-800">
                 Pending balance of <strong>{formatINR(remainingAfterAdvance)}</strong> will be scheduled into{' '}
                 <strong>{installmentCount} equal monthly installments</strong> (~{formatINR(installmentAmount)}/mo).
               </p>
@@ -363,18 +423,18 @@ export default function BookingModal({
           </div>
 
           {/* Action Buttons */}
-          <div className="flex items-center justify-end space-x-3 pt-3 border-t border-slate-200">
+          <div className="flex items-center justify-end space-x-2.5 pt-3 border-t border-slate-200">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-semibold cursor-pointer"
+              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium cursor-pointer transition-colors"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || plots.length === 0}
-              className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded-lg font-bold shadow-md shadow-emerald-900/20 cursor-pointer"
+              className="px-4 py-2 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white rounded-lg font-semibold text-xs shadow-xs transition-colors cursor-pointer"
             >
               {loading ? 'Confirming Booking...' : 'Confirm Plot Booking'}
             </button>

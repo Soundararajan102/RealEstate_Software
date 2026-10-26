@@ -3,7 +3,8 @@ import { BookingsService } from './bookings.service';
 import { CreateBookingDto } from './dto/booking.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
-import { BookingStatus } from '@prisma/client';
+import { Roles } from '../auth/decorators/roles.decorator';
+import { BookingStatus, Role } from '@prisma/client';
 
 @Controller('bookings')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -25,6 +26,7 @@ export class BookingsController {
   }
 
   @Post()
+  @Roles(Role.ADMIN, Role.SALES_EXECUTIVE)
   async create(@Body() dto: CreateBookingDto, @Request() req: any) {
     return this.bookingsService.createBooking(dto, req.user.id);
   }
