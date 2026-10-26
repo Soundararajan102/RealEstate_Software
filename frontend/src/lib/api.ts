@@ -1,4 +1,23 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+const getBaseUrl = (): string => {
+  if (typeof window !== 'undefined') {
+    // In browser: default to relative '/api' proxy so requests route to Next.js on the current domain/origin
+    // and are forwarded over Docker's internal network to the backend.
+    // This avoids port 4000 connection timeouts, CORS issues, and host IP hardcoding.
+    const envUrl = process.env.NEXT_PUBLIC_API_URL;
+    if (envUrl && envUrl.startsWith('/')) {
+      return envUrl.replace(/\/$/, '');
+    }
+    if (envUrl && !envUrl.includes(':4000')) {
+      return envUrl.replace(/\/$/, '');
+    }
+    return '/api';
+  }
+  return process.env.INTERNAL_API_URL
+    ? `${process.env.INTERNAL_API_URL.replace(/\/$/, '')}/api`
+    : 'http://backend:4000/api';
+};
+
+const API_BASE_URL = getBaseUrl();
 
 export function getAuthToken(): string | null {
   if (typeof window === 'undefined') return null;
@@ -39,7 +58,11 @@ export async function apiRequest<T = any>(
     ...(options.headers || {}),
   };
 
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const cleanBase = API_BASE_URL.replace(/\/$/, '');
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  const url = `${cleanBase}${cleanEndpoint}`;
+
+  const response = await fetch(url, {
     ...options,
     headers,
   });

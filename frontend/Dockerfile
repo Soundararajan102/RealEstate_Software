@@ -19,8 +19,8 @@ COPY . .
 # Ensure public directory exists even if empty in repo
 RUN mkdir -p public
 
-# Build argument for client-side API endpoint
-ARG NEXT_PUBLIC_API_URL=http://localhost:4000/api
+# Build argument for client-side API endpoint (defaults to relative /api proxy)
+ARG NEXT_PUBLIC_API_URL=/api
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 

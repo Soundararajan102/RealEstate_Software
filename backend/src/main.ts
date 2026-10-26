@@ -21,23 +21,12 @@ async function bootstrap() {
     }),
   );
 
-  // Enterprise CORS configuration
-  const allowedOrigins: (string | RegExp)[] = [
-    'http://localhost:3000',
-    'http://127.0.0.1:3000',
-    'http://localhost:3001',
-    'http://127.0.0.1:3001',
-    /^http:\/\/localhost(:\d+)?$/,
-    /^http:\/\/127\.0\.0\.1(:\d+)?$/,
-  ];
-
-  if (process.env.FRONTEND_URL) {
-    const urls = process.env.FRONTEND_URL.split(',').map((u) => u.trim());
-    allowedOrigins.push(...urls);
-  }
-
+  // Enterprise CORS configuration: dynamically permit web portals and internal proxies
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Allow internal server-to-server rewrites, curl, mobile apps, or any browser origin
+      return callback(null, true);
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'x-trace-id', 'x-idempotency-key'],
