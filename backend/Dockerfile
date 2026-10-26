@@ -48,6 +48,7 @@ RUN groupadd -g 1001 nodejs && useradd -u 1001 -g nodejs -m -s /bin/sh nestjs
 COPY --chown=nestjs:nodejs --from=builder /app/package.json ./package.json
 COPY --chown=nestjs:nodejs --from=builder /app/node_modules ./node_modules
 COPY --chown=nestjs:nodejs --from=builder /app/dist ./dist
+COPY --chown=nestjs:nodejs --from=builder /app/src ./src
 COPY --chown=nestjs:nodejs --from=builder /app/prisma ./prisma
 COPY --chown=nestjs:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
 RUN sed -i 's/\r$//' ./docker-entrypoint.sh && chmod +x ./docker-entrypoint.sh
