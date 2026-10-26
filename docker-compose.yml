@@ -4,7 +4,6 @@ services:
   # ========================================================
   db:
     image: postgres:16-alpine
-    container_name: msp_real_estate_db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -28,7 +27,6 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: msp_real_estate_backend
     restart: unless-stopped
     depends_on:
       db:
@@ -44,14 +42,11 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:4000/api', (res) => process.exit(res.statusCode === 200 ? 0 : 1))\""]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
+    expose:
+      - "4000"
     networks:
       - msp_network
+      - dokploy-network
 
   # ========================================================
   # 3. Frontend Web Portal Service (Next.js 16 Standalone)
@@ -62,23 +57,18 @@ services:
       dockerfile: Dockerfile
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000/api}
-    container_name: msp_real_estate_frontend
     restart: unless-stopped
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     environment:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: "0.0.0.0"
-    healthcheck:
-      test: ["CMD-SHELL", "node -e \"require('http').get('http://localhost:3000', (res) => process.exit([200, 307, 308].includes(res.statusCode) ? 0 : 1))\""]
-      interval: 15s
-      timeout: 5s
-      retries: 3
-      start_period: 15s
+    expose:
+      - "3000"
     networks:
       - msp_network
+      - dokploy-network
 
 # ========================================================
 # Persistent Volumes & Network Definitions
@@ -90,3 +80,5 @@ volumes:
 networks:
   msp_network:
     driver: bridge
+  dokploy-network:
+    external: true
